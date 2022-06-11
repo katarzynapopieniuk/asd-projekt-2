@@ -7,6 +7,7 @@
 #define ASCII_SIZE 128
 #define EMPTY 0
 #define MAX_ZAKODOWANY_SIZE 1000000
+#define MAX_REXT_SIZE 10000
 
 using namespace std;
 
@@ -38,12 +39,14 @@ struct Wezel {
     int iloscWystapien;
     struct Wezel *lewyDzieciak = NULL;
     struct Wezel *prawyDzieciak = NULL;
-    int kod;
+    unsigned int kod;
+    unsigned int maska;
 };
 
 struct Kod {
     char znak;
     unsigned int kod;
+    unsigned int maska;
 };
 
 void print(struct Wezel wezly[], int iloscWezlow) {
@@ -140,20 +143,25 @@ void dodajWezel(struct Wezel wezly[], int iloscWezlow, struct Wezel wezel) {
 
 void przypiszKody(struct Wezel *root, struct Kod kody[], int *ileKodow) {
     unsigned int kodRoota = root->kod;
+    unsigned int maskaRoota = root->maska;
     if(root->lewyDzieciak != NULL) {
-        root->lewyDzieciak->kod = 2*kodRoota;
+        root->lewyDzieciak->kod = kodRoota*2;
+        root->lewyDzieciak->maska = maskaRoota*2+1;
         przypiszKody(root->lewyDzieciak, kody, ileKodow);
     }
     if(root->prawyDzieciak != NULL) {
-        root->prawyDzieciak->kod = 2*kodRoota + 1;
+        root->prawyDzieciak->kod = kodRoota*2 + 1;
+        root->prawyDzieciak->maska = maskaRoota*2+1;
         przypiszKody(root->prawyDzieciak, kody, ileKodow);
     }
     if(root->znak != NULL) {
         Kod kod;
         kod.znak = root->znak;
         kod.kod = root->kod;
+        kod.maska = root->maska;
         kody[*ileKodow] = kod;
         *ileKodow = *ileKodow + 1;
+        cout << "Kod: " << kod.znak << " : " << kod.kod << " / " << kod.maska << endl;
     }
 }
 
@@ -185,6 +193,7 @@ void kodyHuffmana(struct Wezel wezly[], int iloscWezlow, struct Wezel wezlyArchi
 
     struct Wezel root = wezly[0];
     root.kod = 0;
+    root.maska = 0;
 
     int ileKodow = 0;
     przypiszKody(&root, kody, &ileKodow);
@@ -196,28 +205,24 @@ void kodyHuffmana(struct Wezel wezly[], int iloscWezlow, struct Wezel wezlyArchi
 
 // ******************************** KODOWANIE *********************************
 
-unsigned int znajdzKod(char znak, struct Kod kody[]) {
+Kod* znajdzKod(char znak, struct Kod kody[]) {
     int i = 0;
     while(kody[i].znak != znak) {
         i++;
     }
-    return kody[i].kod;
+    return kody + i;
  };
 
-void dopiszKod(unsigned int num, bool zakodowane[], int *dlugoscZakodowana){
+void dopiszKod(Kod *kod, bool zakodowane[], int *dlugoscZakodowana){
+    unsigned int num = kod->kod;
+    unsigned int maska = kod->maska;
     unsigned int uIntSize = sizeof(unsigned int);
     int i;
-    bool bit;
-    bool omijacZera = true;
+    bool bit, bitMaski;
     for(i = uIntSize*8-1; i>= 0; i--){
         bit = ((num >>i) & 1);
-        if(omijacZera) {
-            if(bit == true || i == 0) {
-                omijacZera = false;
-            }
-        }
-
-        if(!omijacZera) {
+        bitMaski = ((maska>>i) & 1);
+        if(bitMaski) {
             cout << bit;
             zakodowane[*dlugoscZakodowana] = bit;
             *dlugoscZakodowana = *dlugoscZakodowana + 1;
@@ -227,12 +232,8 @@ void dopiszKod(unsigned int num, bool zakodowane[], int *dlugoscZakodowana){
 }
 
 void koduj(char znak, struct Kod kody[], bool zakodowane[], int *dlugoscZakodowana) {
-    unsigned int kod = znajdzKod(znak, kody);
-    cout << znak << kod << ", ";
-    bool bit;
-    int nrBitu = 0;
-    bool pomijacZera = true;
-
+    Kod *kod = znajdzKod(znak, kody);
+    cout << "znak: " << kod->znak << ", kod: " << kod->kod << ", maska: " << kod->maska << "; ";
     dopiszKod(kod, zakodowane, dlugoscZakodowana);
 }
 
@@ -240,17 +241,18 @@ void koduj(char text[], int sizeText, struct Kod kody[], int ileKodow, bool zako
     for(int i=0; i<sizeText; i++) {
         koduj(text[i], kody, zakodowane, dlugoscZakodowana);
     }
-    cout << endl << endl;
+    cout << endl << "zakodowane" << endl;
     for(int i=0; i<*dlugoscZakodowana; i++) {
         cout << zakodowane[i];
     }
+     cout << endl << endl;
 }
 
 // ****************************** ODKODOWANIE *********************************
 
-bool sprobujZnalezcKod(int potencjalnyKod, struct Kod kody[], int ileKodow, char *znak) {
+bool sprobujZnalezcKod(unsigned int potencjalnyKod, unsigned int potencjalnaMaska, struct Kod kody[], int ileKodow, char *znak) {
     for(int i=0; i<ileKodow; i++) {
-        if(kody[i].kod == potencjalnyKod) {
+        if(kody[i].kod == potencjalnyKod && kody[i].maska == potencjalnaMaska) {
             *znak = kody[i].znak;
             return true;
         }
@@ -259,23 +261,27 @@ bool sprobujZnalezcKod(int potencjalnyKod, struct Kod kody[], int ileKodow, char
 }
 
 int odkoduj(bool zakodowane[], int dlugoscZakodowana, struct Kod kody[], int ileKodow, char odkodowane[]) {
-    int potencjalnyKod = 0;
+    unsigned int potencjalnyKod = 0;
+    unsigned int potencjalnaMaska = 0;
     int dlugoscOdkodowana = 0;
     char znak;
 
     for(int i=0; i<dlugoscZakodowana; i++) {
         potencjalnyKod *= 2;
+        potencjalnaMaska = potencjalnaMaska*2 + 1;
         if(zakodowane[i]) {
             potencjalnyKod++;
         }
 
-        if(sprobujZnalezcKod(potencjalnyKod, kody, ileKodow, &znak)) {
+        if(sprobujZnalezcKod(potencjalnyKod, potencjalnaMaska, kody, ileKodow, &znak)) {
             odkodowane[dlugoscOdkodowana] = znak;
             dlugoscOdkodowana++;
             potencjalnyKod = 0;
+            potencjalnaMaska = 0;
         }
     }
 
+    cout << "odkodowane" << endl;
     for(int i=0; i<dlugoscOdkodowana; i++) {
         cout << odkodowane[i];
     }
@@ -285,15 +291,41 @@ int odkoduj(bool zakodowane[], int dlugoscZakodowana, struct Kod kody[], int ile
 
 // ****************************** OBSLUGA PLIKOW ******************************
 
+int odczytajZPliku(char text[]) {
+    char znak;
+    FILE *myfile;
+    myfile = fopen("original.txt", "r");
+    int i = 0;
+    if (myfile != NULL){
+        do {
+            znak = fgetc(myfile);
+            if(znak==EOF) {
+                return i;
+            }
+            if(!feof(myfile)) {
+                text[i] = znak;
+            cout << znak;
+            i++;
+            }
+        } while(!feof(myfile));
+
+        fclose(myfile);
+    } else {
+        cout << "Nie mozna odczytac pliku dane.txt";
+    }
+    return i;
+}
+
 // ********************************** MAIN ************************************
 
 int main() {
-    char text[] = "Barbara ma rabarbar";
+    char text[MAX_REXT_SIZE];
+    int sizeText = odczytajZPliku(text);
+
     int iloscWystapien[ASCII_SIZE];
     for(int c=0; c<=ASCII_SIZE-1; c++) {
         iloscWystapien[c] = 0;
     }
-    int sizeText = sizeof(text)/sizeof(text[0]) -1;
 
     policzIloscWystapien(iloscWystapien, text, sizeText);
 

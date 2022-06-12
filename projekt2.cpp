@@ -301,14 +301,82 @@ int odczytajZPliku(char text[]) {
     return i;
 }
 
+void wpiszKod(Kod *kod, FILE *myfile) {
+    unsigned int num = kod->kod;
+    unsigned int maska = kod->maska;
+    unsigned int uIntSize = sizeof(unsigned int);
+    int i;
+    bool bit, bitMaski;
+    for(i = uIntSize*8-1; i>= 0; i--){
+        bit = ((num >>i) & 1);
+        bitMaski = ((maska>>i) & 1);
+        if(bitMaski) {
+            if(bit) {
+                putc('1', myfile);
+            } else {
+                putc('0', myfile);
+            }
+        }
+    }
+}
+
 void zapiszDoPlikuBinarnego(struct Kod kody[], int iloscKodow, bool zakodowane[], unsigned int dlugoscZakodowana) {
     FILE *myfile;
-    myfile = fopen("skompresowane", "wb+");
+    myfile = fopen("skompresowane.txt", "wb+");
 
     fwrite(&iloscKodow, sizeof(iloscKodow), 1, myfile);
-    fwrite(kody, sizeof(struct Kod) * iloscKodow, 1, myfile);
-    fwrite(zakodowane, sizeof(bool) * dlugoscZakodowana, 1, myfile);
+    fputc('\n', myfile);
+    for(int i=0; i<iloscKodow; i++) {
+        fputc(kody[i].znak, myfile);
+        fputc(':', myfile);
+        wpiszKod(kody+i, myfile);
+        fputc('\n', myfile);
+    }
+    unsigned char c = 0;
+    //fwrite(zakodowane, sizeof(bool) * dlugoscZakodowana, 1, myfile);
+    for(unsigned int i=0; i<dlugoscZakodowana; i+=8) {
+        for(int j=0; j<8; j++) {
+            c *= 2;
+            if(zakodowane[i+j]) {
+                c++;
+            }
+        }
+        cout << "bajt: " << (unsigned int )c << endl;
+        fwrite(&c, sizeof(unsigned char), 1, myfile);
+        c = 0;
+    }
     fclose(myfile);
+}
+
+void wczytajKody(Kod *kody, int ileKodow, FILE *myfile) {
+    char znak;
+    char bitKodu;
+    unsigned int kodNum;
+    unsigned int maska;
+    getc(myfile); // '\n'
+    for(int i=0; i<ileKodow; i++) {
+        znak = getc(myfile);
+        getc(myfile); // separator
+        kodNum = 0;
+        maska = 0;
+        do {
+            bitKodu = getc(myfile);
+            if(bitKodu == '1') {
+                kodNum = kodNum * 2 + 1;
+                maska = maska * 2 + 1;
+            } else if(bitKodu == '0') {
+                kodNum = kodNum * 2;
+                maska = maska * 2 + 1;
+            }
+        } while(bitKodu != '\n');
+
+        Kod kod;
+        kod.kod = kodNum;
+        kod.maska = maska;
+        kod.znak = znak;
+        *kody = kod;
+        kody++;
+    }
 }
 
 void odczytajZPlikuBinarnego() {
@@ -317,7 +385,7 @@ void odczytajZPlikuBinarnego() {
     bool zakodowane[MAX_ZAKODOWANY_SIZE];
     bool bit;
     int ileKodow, zakodowaneSize;
-    myfile = fopen("skompresowane", "rb");
+    myfile = fopen("skompresowane.txt", "rb");
 
     fseek(myfile, 0, SEEK_END);
     long fileSize = ftell(myfile);
@@ -328,26 +396,29 @@ void odczytajZPlikuBinarnego() {
         int i = 0;
         fread(&ileKodow, sizeof(int), 1, myfile);
         cout << "ilosc kodow: " << ileKodow << endl;
-        fread(&kody, sizeof(struct Kod) * ileKodow, 1, myfile);
+        wczytajKody(kody, ileKodow, myfile);
         long pozycja = ftell(myfile);
-        long ileBitowZostalo = fileSize - pozycja;
-        zakodowaneSize = ileBitowZostalo;
-        cout << "Rozmiar zakodowanego tekstu: " << zakodowaneSize << endl;
+        long ileBajtowZostalo = fileSize - pozycja;
+        zakodowaneSize = 0;
         for (int i=0; i<ileKodow; i++) {
             cout << kody[i].znak << " : " << kody[i].kod << "/" << kody[i].maska << endl;
         }
-        fread(&zakodowane, ileBitowZostalo, 1, myfile);
-        /*
-        do {
-            fread(&bit, sizeof(bool), 1, myfile);
-            if(!feof(myfile)) {
-                zakodowane[i] = bit;
-                i++;
-                cout << bit;
-            }
-        } while(!feof(myfile));
-        */
 
+        unsigned char c;
+        for(unsigned int i=0; i<ileBajtowZostalo; i++) {
+            fread(&c, sizeof(unsigned char), 1, myfile);
+            for(int j=7; j>=0; j--) {
+                if(c % 2 == 1) {
+                    zakodowane[8*i+j] = true;
+                } else {
+                    zakodowane[8*i+j] = false;
+                }
+                zakodowaneSize++;
+                c /= 2;
+            }
+        }
+
+        cout << "Rozmiar zakodowanego tekstu: " << zakodowaneSize << endl;
         fclose(myfile);
     } else {
         cout << "Nie mozna odczytac pliku dane.txt";
@@ -355,6 +426,12 @@ void odczytajZPlikuBinarnego() {
     }
 
     fclose(myfile);
+
+    cout << "odczyt z pliku: " << endl;
+    for(int i=0; i<zakodowaneSize; i++) {
+        cout << zakodowane[i];
+    }
+    cout << endl;
 
     char odkodowane[MAX_REXT_SIZE];
     odkoduj(zakodowane, zakodowaneSize, kody, ileKodow, odkodowane);
@@ -379,7 +456,6 @@ void wczytajTextZakodujZapisz() {
     int iloscWezlow = utworzWezly(wezly, iloscWystapien);
 
     zbudujKopiecMin(wezly, iloscWezlow);
-    cout << text << endl;
 
     kodyHuffmana(wezly, iloscWezlow, wezlyArchiwalne, kody);
 

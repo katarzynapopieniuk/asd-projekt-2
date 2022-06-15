@@ -322,7 +322,7 @@ void wpiszKod(Kod *kod, FILE *myfile) {
 
 void zapiszDoPlikuBinarnego(struct Kod kody[], int iloscKodow, bool zakodowane[], unsigned int dlugoscZakodowana) {
     FILE *myfile;
-    myfile = fopen("skompresowane.txt", "wb+");
+    myfile = fopen("skompresowane.txt", "w+");
 
     fwrite(&iloscKodow, sizeof(iloscKodow), 1, myfile);
     fputc('\n', myfile);
@@ -379,13 +379,13 @@ void wczytajKody(Kod *kody, int ileKodow, FILE *myfile) {
     }
 }
 
-void odczytajZPlikuBinarnego() {
+void odczytajZPlikuIOdkoduj() {
     FILE *myfile;
     struct Kod kody[ASCII_SIZE];
     bool zakodowane[MAX_ZAKODOWANY_SIZE];
     bool bit;
     int ileKodow, zakodowaneSize;
-    myfile = fopen("skompresowane.txt", "rb");
+    myfile = fopen("skompresowane.txt", "r");
 
     fseek(myfile, 0, SEEK_END);
     long fileSize = ftell(myfile);
@@ -467,5 +467,5 @@ void wczytajTextZakodujZapisz() {
 
 int main() {
     wczytajTextZakodujZapisz();
-    odczytajZPlikuBinarnego();
+    //odczytajZPlikuIOdkoduj();
 }
